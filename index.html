@@ -172,6 +172,11 @@
       border-color: var(--bad);
     }
 
+    .card.selected {
+      border-color: #1f8f4d;
+      box-shadow: 0 0 0 3px rgba(31, 143, 77, 0.28);
+    }
+
     .next-button,
     .restart-button {
       min-height: 44px;
@@ -333,7 +338,8 @@
       pageTimes: [],
       firstTryHits: 0,
       pageSummaries: [],
-      timerId: null
+      timerId: null,
+      selectedCard: null
     };
 
     const activity = document.getElementById("activity");
@@ -415,7 +421,9 @@
       cards.forEach((card) => {
         card.classList.remove("used", "error", "dragging");
         card.removeAttribute("style");
+        card.classList.remove("selected");
       });
+      state.selectedCard = null;
       updateStats();
       startTimerIfNeeded();
     }
@@ -565,6 +573,13 @@
       card.style.transform = "";
     }
 
+    function setSelectedCard(card) {
+      if (card?.classList.contains("used")) return;
+      state.selectedCard = card;
+      cards.forEach((node) => node.classList.remove("selected"));
+      if (card) card.classList.add("selected");
+    }
+
     function beginDrag(event, card) {
       if (card.classList.contains("used")) return;
       event.preventDefault();
@@ -581,6 +596,7 @@
       card.style.setProperty("--drag-width", `${rect.width}px`);
       card.style.setProperty("--drag-height", `${rect.height}px`);
       card.classList.add("dragging");
+      setSelectedCard(card);
       moveDrag(event);
     }
 
@@ -595,7 +611,11 @@
       if (!state.drag || event.pointerId !== state.drag.pointerId) return;
       const { card } = state.drag;
       state.drag = null;
-      card.releasePointerCapture(event.pointerId);
+      try {
+        if (card.hasPointerCapture(event.pointerId)) card.releasePointerCapture(event.pointerId);
+      } catch (error) {
+        // Safari puede lanzar en algunos cancel/up; no bloqueamos la interacción.
+      }
       const zone = zoneForCard(card) || zoneAtPoint(event.clientX, event.clientY);
       handleDrop(card, zone);
     }
@@ -678,6 +698,12 @@
       card.addEventListener("pointermove", moveDrag);
       card.addEventListener("pointerup", endDrag);
       card.addEventListener("pointercancel", endDrag);
+      card.addEventListener("click", () => {
+        const current = pages[state.index];
+        if (!current?.answers) return;
+        if (card.classList.contains("used")) return;
+        setSelectedCard(card);
+      });
       card.addEventListener("keydown", (event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
@@ -686,6 +712,16 @@
           || zones.find((zone) => !state.solved[zone.dataset.zone]);
         if (!openZone) return;
         handleDrop(card, openZone);
+      });
+    });
+
+    zones.forEach((zone) => {
+      zone.addEventListener("click", () => {
+        const current = pages[state.index];
+        if (!current?.answers) return;
+        if (state.solved[zone.dataset.zone]) return;
+        if (!state.selectedCard || state.selectedCard.classList.contains("used")) return;
+        handleDrop(state.selectedCard, zone);
       });
     });
 
